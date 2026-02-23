@@ -1,3 +1,21 @@
+## Switch Kodi Fork (Active)
+This repository tracks the active Kodi 18.9 Nintendo Switch port effort (`devkitPro/libnx`) tested in Eden.
+
+### Current Progress
+- Kodi home screen renders in Eden with readable text and working main layout.
+- Core startup blockers fixed: pathing, sqlite open behavior, UTF conversion, font/render stability, and skin color parsing.
+- Ongoing work: performance, remaining UI/image polish, and broader runtime stability.
+
+### Running In Eden
+![Kodi running in Eden](docs/resources/switch-eden-running.png)
+
+For full technical handoff and debug flow:
+- `README_SWITCH_SESSION.md`
+- `SWITCH_SPIKE_NOTES.md`
+
+---
+## Upstream Kodi README (Reference)
+
 ![Kodi Logo](docs/resources/banner.png)
 
 <p align="center">
@@ -31,18 +49,6 @@ Kodi is an award-winning **free and open source** software media player and ente
 Created in 2003 by a group of like minded programmers, Kodi is a non-profit project run by the XBMC Foundation and developed by volunteers located around the world. More than 500 software developers have contributed to Kodi to date, and 100-plus translators have worked to expand its reach, making it available in more than 70 languages.
 
 While Kodi functions very well as a standard media player application for your computer, it has been designed to be the perfect companion for your HTPC. With its **beautiful interface and powerful skinning engine**, Kodi feels very natural to use from the couch with a remote control and is the ideal solution for your home theater.
-
-## Switch Fork Status (This Repo)
-This repository is currently being used as a Nintendo Switch porting spike for Kodi 18.9 using `devkitPro/libnx` and Eden.
-
-Current status:
-- Home UI now renders with readable text and working core layout in emulator.
-- Major bring-up fixes are in place for pathing, sqlite opening behavior, UTF conversion, and early render/font stability.
-- Latest milestone fixed invisible logo rendering by hardening color parsing (see `README_SWITCH_SESSION.md`).
-
-For detailed handoff context and current debugging workflow, use:
-- `README_SWITCH_SESSION.md`
-- `SWITCH_SPIKE_NOTES.md`
 
 ## Give your media the love it deserves
 Kodi can be used to play almost all popular audio and video formats around. It was designed for network playback, so you can stream your multimedia from anywhere in the house or directly from the internet using practically any protocol available.
