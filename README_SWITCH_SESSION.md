@@ -150,3 +150,11 @@ Copy-Item -Force 'D:\SwitchDev\ports\kodi-18.9\build-switch-spike\kodi-switch.nr
   - residual low-FPS/hang behavior in some paths,
   - additional skin/image correctness checks,
   - input/polish and emulator/hardware validation.
+
+## Runtime Update (Input + FPS)
+- Switch controller input bridge is now wired through `xbmc/windowing/WinSystemSwitch.cpp` into Kodi key events.
+- Confirmed working in Eden:
+  - D-pad navigation
+  - select/back/menu-style actions
+  - theme changes and menu interaction are functional
+- Current observed performance in Eden is still low (around single-digit FPS, reported ~8 FPS on latest run), likely constrained by emulator CPU/Mesa stack and remaining render cost.

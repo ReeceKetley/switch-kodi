@@ -8,6 +8,10 @@
 
 #include "windowing/WinSystem.h"
 
+#include "AppInboundProtocol.h"
+#include "ServiceBroker.h"
+#include "input/XBMC_keysym.h"
+#include "windowing/XBMC_events.h"
 #include "rendering/gles/RenderSystemGLES.h"
 #include "threads/SingleLock.h"
 #include "utils/EGLUtils.h"
@@ -101,6 +105,59 @@ public:
   CRenderSystemBase* GetRenderSystem() override { return this; }
   bool MessagePump() override
   {
+    if (!m_inputInitialized)
+    {
+      // Configure the default input source once for applet mode homebrew.
+      padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+      padInitializeDefault(&m_pad);
+      m_inputInitialized = true;
+      CLog::Log(LOGNOTICE, "SWITCH_INPUT: initialized default pad");
+    }
+
+    padUpdate(&m_pad);
+    const u64 down = padGetButtonsDown(&m_pad);
+    const u64 up = padGetButtonsUp(&m_pad);
+
+    auto pushKeyEvent = [](XBMCKey key, bool pressed)
+    {
+      XBMC_Event ev{};
+      ev.type = pressed ? XBMC_KEYDOWN : XBMC_KEYUP;
+      ev.key.keysym.scancode = 0;
+      ev.key.keysym.sym = key;
+      ev.key.keysym.mod = XBMCKMOD_NONE;
+      ev.key.keysym.unicode = 0;
+
+      std::shared_ptr<CAppInboundProtocol> appPort = CServiceBroker::GetAppPort();
+      if (appPort)
+        appPort->OnEvent(ev);
+    };
+
+    auto mapButton = [&](u64 button, XBMCKey key)
+    {
+      if (down & button)
+        pushKeyEvent(key, true);
+      if (up & button)
+        pushKeyEvent(key, false);
+    };
+
+    // Navigation
+    mapButton(HidNpadButton_Up, XBMCK_UP);
+    mapButton(HidNpadButton_Down, XBMCK_DOWN);
+    mapButton(HidNpadButton_Left, XBMCK_LEFT);
+    mapButton(HidNpadButton_Right, XBMCK_RIGHT);
+
+    // Primary actions
+    mapButton(HidNpadButton_A, XBMCK_RETURN);      // Select
+    mapButton(HidNpadButton_B, XBMCK_BACKSPACE);   // Back
+    mapButton(HidNpadButton_X, XBMCK_c);           // Context menu
+    mapButton(HidNpadButton_Y, XBMCK_i);           // Info
+
+    // Utility navigation
+    mapButton(HidNpadButton_L, XBMCK_PAGEUP);
+    mapButton(HidNpadButton_R, XBMCK_PAGEDOWN);
+    mapButton(HidNpadButton_Plus, XBMCK_ESCAPE);   // Menu/back
+    mapButton(HidNpadButton_Minus, XBMCK_TAB);     // Cycle / test binding
+
     const bool alive = appletMainLoop();
     if (!alive && !m_appletExitLogged)
     {
@@ -143,7 +200,11 @@ public:
       return false;
     }
 
-    CLog::Log(LOGNOTICE, "SWITCH_GFX: InitWindowSystem ok");
+    // Request full CPU/GPU clocks. In applet (homebrew) mode the Switch
+    // defaults to reduced clocks (~1020 MHz CPU); this restores performance
+    // equivalent to a fast-load boost profile.
+    appletSetCpuBoostMode(ApmCpuBoostMode_FastLoad);
+    CLog::Log(LOGNOTICE, "SWITCH_GFX: InitWindowSystem ok (CPU boost requested)");
     return true;
   }
 
@@ -183,6 +244,13 @@ public:
       CLog::Log(LOGERROR, "SWITCH_GFX: BindContext failed");
       return false;
     }
+
+    // Disable vsync so eglSwapBuffers returns immediately after queuing the
+    // frame rather than blocking for the next vblank.  The Mesa EGL/libnx
+    // path stalls ~94 ms per frame with swap-interval=1 (only ~10 FPS).
+    // Frame pacing can be added back later once the CPU budget allows it.
+    eglSwapInterval(m_eglContext.GetEGLDisplay(), 0);
+    CLog::Log(LOGNOTICE, "SWITCH_GFX: eglSwapInterval(0) set (vsync off)");
 
     const char* eglVendor = eglQueryString(m_eglContext.GetEGLDisplay(), EGL_VENDOR);
     const char* eglVersion = eglQueryString(m_eglContext.GetEGLDisplay(), EGL_VERSION);
@@ -285,6 +353,8 @@ private:
   std::vector<IDispResource*> m_resources;
   uint64_t m_presentCount = 0;
   bool m_appletExitLogged = false;
+  bool m_inputInitialized = false;
+  PadState m_pad{};
 };
 
 std::unique_ptr<CWinSystemBase> CWinSystemBase::CreateWinSystem()

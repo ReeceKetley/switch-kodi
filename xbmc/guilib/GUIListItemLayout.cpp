@@ -29,41 +29,49 @@ bool SwitchListLayoutCfgContainsInt(const char* key, int value)
   if (!key || !*key)
     return false;
 
-  const char* paths[] = {
-    "sdmc:/switch/kodi/trace.cfg",
-    "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
-    "sdmc:/switch/kodi-switch/trace.cfg",
-    "sdmc:/switch/trace.cfg",
-  };
-
-  for (const char* p : paths)
+  static bool s_loaded = false;
+  static bool s_traceEnabled = false;
+  static char s_cfg[8192] = {0};
+  if (!s_loaded)
   {
-    FILE* f = fopen(p, "rb");
-    if (!f)
-      continue;
-
-    char buf[8192];
-    const size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    const size_t keyLen = std::strlen(key);
-    const char* cur = buf;
-    while (cur && *cur)
+    s_loaded = true;
+    const char* paths[] = {
+      "sdmc:/switch/kodi/trace.cfg",
+      "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
+      "sdmc:/switch/kodi-switch/trace.cfg",
+      "sdmc:/switch/trace.cfg",
+    };
+    for (const char* p : paths)
     {
-      const char* hit = std::strstr(cur, key);
-      if (!hit)
-        break;
-      const char* val = hit + keyLen;
-      if (*val == '=')
-      {
-        ++val;
-        if (std::atoi(val) == value)
-          return true;
-      }
-      cur = hit + 1;
+      FILE* f = fopen(p, "rb");
+      if (!f)
+        continue;
+      const size_t n = fread(s_cfg, 1, sizeof(s_cfg) - 1, f);
+      fclose(f);
+      s_cfg[n] = '\0';
+      s_traceEnabled = std::strstr(s_cfg, "trace=1") != nullptr;
+      break;
     }
+  }
+
+  if (!s_cfg[0] || !s_traceEnabled)
     return false;
+
+  const size_t keyLen = std::strlen(key);
+  const char* cur = s_cfg;
+  while (cur && *cur)
+  {
+    const char* hit = std::strstr(cur, key);
+    if (!hit)
+      break;
+    const char* val = hit + keyLen;
+    if (*val == '=')
+    {
+      ++val;
+      if (std::atoi(val) == value)
+        return true;
+    }
+    cur = hit + 1;
   }
 
   return false;
@@ -140,7 +148,7 @@ void CGUIListItemLayout::Render(CGUIListItem *item, int parentID)
   static uint64_t s_switchListLayoutRenderCalls = 0;
   ++s_switchListLayoutRenderCalls;
   const bool traceRender = SwitchListLayoutCfgContainsInt("trace_listlayout_render", 1) ||
-                           (parentID == 9000);
+                           SwitchListLayoutCfgContainsInt("trace_listlayout_parent", parentID);
   const bool traceCall = traceRender && (s_switchListLayoutRenderCalls <= 80);
   const bool skipGroupRender = traceRender && SwitchListLayoutCfgContainsInt("skip_listlayout_group_render", 1);
   if (traceCall)

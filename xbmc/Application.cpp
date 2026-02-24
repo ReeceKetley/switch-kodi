@@ -1925,6 +1925,19 @@ void CApplication::Render()
               m_skipGuiRender ? 1 : 0,
               m_AppFocused ? 1 : 0);
   }
+
+  // Per-phase render timing — logs a breakdown every ~1 second.
+  // Phase buckets (all in ms, accumulated then reported):
+  //   begin    = BeginRender()
+  //   wm       = WindowManager.Render() + AfterRender()
+  //   ex       = RenderEx()
+  //   end      = EndRender() + InfoMgr reset
+  //   flip     = Flip() / eglSwapBuffers
+  static unsigned int s_rp_begin = 0, s_rp_wm = 0, s_rp_ex = 0, s_rp_end = 0, s_rp_flip = 0;
+  static unsigned int s_rp_frames = 0;
+  static unsigned int s_rp_timer = XbmcThreads::SystemClockMillis();
+  unsigned int rp_t0, rp_t1, rp_t2, rp_t3, rp_t4, rp_t5;
+  rp_t0 = XbmcThreads::SystemClockMillis();
 #endif
 
   bool hasRendered = false;
@@ -1981,6 +1994,10 @@ void CApplication::Render()
   }
 #endif
 
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  rp_t1 = XbmcThreads::SystemClockMillis(); // after BeginRender
+#endif
+
   // render gui layer
   if (switchCfg.trace_render_steps)
     CLog::Log(LOGNOTICE, "SWITCH_RENDER_STEP: pre-gui renderGUI={} skipGuiRender={} skip_render_gui={}",
@@ -2017,6 +2034,9 @@ void CApplication::Render()
 
     m_lastRenderTime = XbmcThreads::SystemClockMillis();
   }
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  rp_t2 = XbmcThreads::SystemClockMillis(); // after WindowManager.Render + AfterRender
+#endif
 
   // render video layer
   if (switchCfg.trace_render_steps)
@@ -2025,6 +2045,9 @@ void CApplication::Render()
     CServiceBroker::GetGUI()->GetWindowManager().RenderEx();
   if (switchCfg.trace_render_steps)
     CLog::Log(LOGNOTICE, "SWITCH_RENDER_STEP: WindowManager.RenderEx done");
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  rp_t3 = XbmcThreads::SystemClockMillis(); // after RenderEx
+#endif
 
   if (switchCfg.trace_render_steps)
     CLog::Log(LOGNOTICE, "SWITCH_RENDER_STEP: EndRender begin");
@@ -2043,6 +2066,9 @@ void CApplication::Render()
   {
     infoMgr.GetInfoProviders().GetSystemInfoProvider().UpdateFPS();
   }
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  rp_t4 = XbmcThreads::SystemClockMillis(); // after EndRender + InfoMgr + FPS
+#endif
 
   if (switchCfg.trace_render_steps)
     CLog::Log(LOGNOTICE, "SWITCH_RENDER_STEP: Flip begin hasRendered={} videoLayer={}",
@@ -2056,6 +2082,7 @@ void CApplication::Render()
 #endif
   CServiceBroker::GetWinSystem()->GetGfxContext().Flip(hasRendered, m_appPlayer.IsRenderingVideoLayer());
 #if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  rp_t5 = XbmcThreads::SystemClockMillis(); // after Flip
   if (postFlipTrace)
     SwitchBootTrace("RENDER_POST: post-flip");
 #endif
@@ -2064,6 +2091,24 @@ void CApplication::Render()
 
   CTimeUtils::UpdateFrameTime(hasRendered);
 #if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  // Accumulate phase times and emit breakdown every ~1 second.
+  s_rp_begin += (rp_t1 - rp_t0);
+  s_rp_wm    += (rp_t2 - rp_t1);
+  s_rp_ex    += (rp_t3 - rp_t2);
+  s_rp_end   += (rp_t4 - rp_t3);
+  s_rp_flip  += (rp_t5 - rp_t4);
+  ++s_rp_frames;
+  {
+    unsigned int rp_now = XbmcThreads::SystemClockMillis();
+    if (rp_now - s_rp_timer >= 1000)
+    {
+      CLog::Log(LOGNOTICE,
+                "SWITCH_RENDER_PHASES: frames={} begin={}ms wm={}ms ex={}ms end={}ms flip={}ms",
+                s_rp_frames, s_rp_begin, s_rp_wm, s_rp_ex, s_rp_end, s_rp_flip);
+      s_rp_begin = s_rp_wm = s_rp_ex = s_rp_end = s_rp_flip = s_rp_frames = 0;
+      s_rp_timer = rp_now;
+    }
+  }
   if (postFlipTrace)
     SwitchBootTrace("RENDER_POST: post-update-frame-time");
   ++s_switchPostFlipTrace;
@@ -2827,6 +2872,17 @@ void CApplication::FrameMove(bool processEvents, bool processGUI)
   static uint64_t s_frameMoveCalls = 0;
   ++s_frameMoveCalls;
   const bool fmTrace = (s_frameMoveCalls <= 10);
+
+  // Per-phase FrameMove timing — accumulated and logged once per second.
+  //   input  = HandlePortEvents + InputManager::Process
+  //   wmp    = WindowManager::Process  (GUI animation update)
+  //   wmfm   = WindowManager::FrameMove
+  //   rest   = AppPlayer.FrameMove + DriveRenderLoop
+  static unsigned int s_fm_input=0, s_fm_wmp=0, s_fm_wmfm=0, s_fm_rest=0;
+  static unsigned int s_fm_frames=0;
+  static unsigned int s_fm_timer = XbmcThreads::SystemClockMillis();
+  unsigned int fm_t0, fm_t1, fm_t2, fm_t3, fm_t4;
+  fm_t0 = XbmcThreads::SystemClockMillis();
   if (fmTrace)
     CLog::Log(LOGNOTICE, "SWITCH_FM: enter call={} events={} gui={} renderGUI={}",
               static_cast<unsigned long long>(s_frameMoveCalls),
@@ -2909,6 +2965,9 @@ void CApplication::FrameMove(bool processEvents, bool processGUI)
     if (m_ProcessedExternalDecay && --m_ProcessedExternalDecay == 0)
       m_ProcessedExternalCalls = 0;
   }
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  fm_t1 = XbmcThreads::SystemClockMillis(); // after input processing
+#endif
 
   if (processGUI && m_renderGUI)
   {
@@ -2984,12 +3043,18 @@ void CApplication::FrameMove(bool processEvents, bool processGUI)
 #endif
       }
     }
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+    fm_t2 = XbmcThreads::SystemClockMillis(); // after WM.Process
+#endif
     if (fmTrace)
       CLog::Log(LOGNOTICE, "SWITCH_FM: WM.FrameMove begin");
     CServiceBroker::GetGUI()->GetWindowManager().FrameMove();
     if (fmTrace)
       CLog::Log(LOGNOTICE, "SWITCH_FM: WM.FrameMove done");
   }
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  fm_t3 = XbmcThreads::SystemClockMillis(); // after WM.FrameMove
+#endif
 
   if (fmTrace)
     CLog::Log(LOGNOTICE, "SWITCH_FM: AppPlayer.FrameMove begin");
@@ -3003,6 +3068,34 @@ void CApplication::FrameMove(bool processEvents, bool processGUI)
   CServiceBroker::GetWinSystem()->DriveRenderLoop();
   if (fmTrace)
     CLog::Log(LOGNOTICE, "SWITCH_FM: DriveRenderLoop done");
+
+#if defined(TARGET_SWITCH) || defined(__SWITCH__)
+  fm_t4 = XbmcThreads::SystemClockMillis(); // after AppPlayer.FrameMove + DriveRenderLoop
+
+  // If processGUI was false, fm_t2 and fm_t3 were never set — init them from fm_t1.
+  if (!processGUI || !m_renderGUI)
+  {
+    fm_t2 = fm_t1;
+    fm_t3 = fm_t1;
+  }
+
+  s_fm_input += (fm_t1 - fm_t0);
+  s_fm_wmp   += (fm_t2 - fm_t1);
+  s_fm_wmfm  += (fm_t3 - fm_t2);
+  s_fm_rest  += (fm_t4 - fm_t3);
+  ++s_fm_frames;
+  {
+    unsigned int fm_now = XbmcThreads::SystemClockMillis();
+    if (fm_now - s_fm_timer >= 1000)
+    {
+      CLog::Log(LOGNOTICE,
+                "SWITCH_FM_PHASES: frames={} input={}ms wmp={}ms wmfm={}ms rest={}ms",
+                s_fm_frames, s_fm_input, s_fm_wmp, s_fm_wmfm, s_fm_rest);
+      s_fm_input = s_fm_wmp = s_fm_wmfm = s_fm_rest = s_fm_frames = 0;
+      s_fm_timer = fm_now;
+    }
+  }
+#endif
 }
 
 

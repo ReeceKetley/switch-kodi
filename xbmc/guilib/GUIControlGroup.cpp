@@ -25,43 +25,51 @@ static bool SwitchGroupCfgContainsInt(const char* key, int value)
   if (!key || !*key)
     return false;
 
-  const char* paths[] = {
-    "sdmc:/switch/kodi/trace.cfg",
-    "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
-    "sdmc:/switch/kodi-switch/trace.cfg",
-    "sdmc:/switch/trace.cfg",
-  };
-
-  for (const char* p : paths)
+  static bool s_loaded = false;
+  static bool s_traceEnabled = false;
+  static char s_cfg[8192] = {0};
+  if (!s_loaded)
   {
-    FILE* f = fopen(p, "rb");
-    if (!f)
-      continue;
-
-    char buf[8192];
-    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    const size_t keyLen = std::strlen(key);
-    const char* cur = buf;
-    while (cur && *cur)
+    s_loaded = true;
+    const char* paths[] = {
+      "sdmc:/switch/kodi/trace.cfg",
+      "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
+      "sdmc:/switch/kodi-switch/trace.cfg",
+      "sdmc:/switch/trace.cfg",
+    };
+    for (const char* p : paths)
     {
-      const char* hit = std::strstr(cur, key);
-      if (!hit)
-        break;
-      const char* val = hit + keyLen;
-      if (*val == '=')
-      {
-        ++val;
-        if (std::atoi(val) == value)
-          return true;
-      }
-      cur = hit + 1;
+      FILE* f = fopen(p, "rb");
+      if (!f)
+        continue;
+
+      size_t n = fread(s_cfg, 1, sizeof(s_cfg) - 1, f);
+      fclose(f);
+      s_cfg[n] = '\0';
+      s_traceEnabled = std::strstr(s_cfg, "trace=1") != nullptr;
+      break;
     }
-    return false;
   }
 
+  if (!s_cfg[0] || !s_traceEnabled)
+    return false;
+
+  const size_t keyLen = std::strlen(key);
+  const char* cur = s_cfg;
+  while (cur && *cur)
+  {
+    const char* hit = std::strstr(cur, key);
+    if (!hit)
+      break;
+    const char* val = hit + keyLen;
+    if (*val == '=')
+    {
+      ++val;
+      if (std::atoi(val) == value)
+        return true;
+    }
+    cur = hit + 1;
+  }
   return false;
 }
 
@@ -73,47 +81,54 @@ static bool SwitchGroupCfgContainsPrefix(const char* key, int value)
   char valueBuf[32];
   std::snprintf(valueBuf, sizeof(valueBuf), "%d", value);
 
-  const char* paths[] = {
-    "sdmc:/switch/kodi/trace.cfg",
-    "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
-    "sdmc:/switch/kodi-switch/trace.cfg",
-    "sdmc:/switch/trace.cfg",
-  };
-
-  for (const char* p : paths)
+  static bool s_loaded = false;
+  static bool s_traceEnabled = false;
+  static char s_cfg[8192] = {0};
+  if (!s_loaded)
   {
-    FILE* f = fopen(p, "rb");
-    if (!f)
-      continue;
-
-    char buf[8192];
-    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    const size_t keyLen = std::strlen(key);
-    const char* cur = buf;
-    while (cur && *cur)
+    s_loaded = true;
+    const char* paths[] = {
+      "sdmc:/switch/kodi/trace.cfg",
+      "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
+      "sdmc:/switch/kodi-switch/trace.cfg",
+      "sdmc:/switch/trace.cfg",
+    };
+    for (const char* p : paths)
     {
-      const char* hit = std::strstr(cur, key);
-      if (!hit)
-        break;
-      const char* val = hit + keyLen;
-      if (*val == '=')
-      {
-        ++val;
-        const char* end = val;
-        while (*end && *end != '\n' && *end != '\r')
-          ++end;
-        const size_t prefixLen = static_cast<size_t>(end - val);
-        if (prefixLen > 0 && std::strncmp(valueBuf, val, prefixLen) == 0)
-          return true;
-      }
-      cur = hit + 1;
+      FILE* f = fopen(p, "rb");
+      if (!f)
+        continue;
+      size_t n = fread(s_cfg, 1, sizeof(s_cfg) - 1, f);
+      fclose(f);
+      s_cfg[n] = '\0';
+      s_traceEnabled = std::strstr(s_cfg, "trace=1") != nullptr;
+      break;
     }
-    return false;
   }
 
+  if (!s_cfg[0] || !s_traceEnabled)
+    return false;
+
+  const size_t keyLen = std::strlen(key);
+  const char* cur = s_cfg;
+  while (cur && *cur)
+  {
+    const char* hit = std::strstr(cur, key);
+    if (!hit)
+      break;
+    const char* val = hit + keyLen;
+    if (*val == '=')
+    {
+      ++val;
+      const char* end = val;
+      while (*end && *end != '\n' && *end != '\r')
+        ++end;
+      const size_t prefixLen = static_cast<size_t>(end - val);
+      if (prefixLen > 0 && std::strncmp(valueBuf, val, prefixLen) == 0)
+        return true;
+    }
+    cur = hit + 1;
+  }
   return false;
 }
 
@@ -126,48 +141,55 @@ static bool SwitchGroupCfgContainsSuffix(const char* key, int value)
   std::snprintf(valueBuf, sizeof(valueBuf), "%d", value);
   const size_t valueLen = std::strlen(valueBuf);
 
-  const char* paths[] = {
-    "sdmc:/switch/kodi/trace.cfg",
-    "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
-    "sdmc:/switch/kodi-switch/trace.cfg",
-    "sdmc:/switch/trace.cfg",
-  };
-
-  for (const char* p : paths)
+  static bool s_loaded = false;
+  static bool s_traceEnabled = false;
+  static char s_cfg[8192] = {0};
+  if (!s_loaded)
   {
-    FILE* f = fopen(p, "rb");
-    if (!f)
-      continue;
-
-    char buf[8192];
-    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    const size_t keyLen = std::strlen(key);
-    const char* cur = buf;
-    while (cur && *cur)
+    s_loaded = true;
+    const char* paths[] = {
+      "sdmc:/switch/kodi/trace.cfg",
+      "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
+      "sdmc:/switch/kodi-switch/trace.cfg",
+      "sdmc:/switch/trace.cfg",
+    };
+    for (const char* p : paths)
     {
-      const char* hit = std::strstr(cur, key);
-      if (!hit)
-        break;
-      const char* val = hit + keyLen;
-      if (*val == '=')
-      {
-        ++val;
-        const char* end = val;
-        while (*end && *end != '\n' && *end != '\r')
-          ++end;
-        const size_t suffixLen = static_cast<size_t>(end - val);
-        if (suffixLen > 0 && suffixLen <= valueLen &&
-            std::strncmp(valueBuf + (valueLen - suffixLen), val, suffixLen) == 0)
-          return true;
-      }
-      cur = hit + 1;
+      FILE* f = fopen(p, "rb");
+      if (!f)
+        continue;
+      size_t n = fread(s_cfg, 1, sizeof(s_cfg) - 1, f);
+      fclose(f);
+      s_cfg[n] = '\0';
+      s_traceEnabled = std::strstr(s_cfg, "trace=1") != nullptr;
+      break;
     }
-    return false;
   }
 
+  if (!s_cfg[0] || !s_traceEnabled)
+    return false;
+
+  const size_t keyLen = std::strlen(key);
+  const char* cur = s_cfg;
+  while (cur && *cur)
+  {
+    const char* hit = std::strstr(cur, key);
+    if (!hit)
+      break;
+    const char* val = hit + keyLen;
+    if (*val == '=')
+    {
+      ++val;
+      const char* end = val;
+      while (*end && *end != '\n' && *end != '\r')
+        ++end;
+      const size_t suffixLen = static_cast<size_t>(end - val);
+      if (suffixLen > 0 && suffixLen <= valueLen &&
+          std::strncmp(valueBuf + (valueLen - suffixLen), val, suffixLen) == 0)
+        return true;
+    }
+    cur = hit + 1;
+  }
   return false;
 }
 #else
@@ -279,7 +301,8 @@ void CGUIControlGroup::DynamicResourceAlloc(bool bOnOff)
 
 void CGUIControlGroup::Process(unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
-  const bool traceProcessWindow = (GetParentID() == WINDOW_DIALOG_VOLUME_BAR || GetParentID() == WINDOW_HOME);
+  const bool traceProcessWindow = SwitchGroupCfgContainsInt("trace_process_steps", 1) &&
+                                  (GetParentID() == WINDOW_DIALOG_VOLUME_BAR || GetParentID() == WINDOW_HOME);
   if (traceProcessWindow)
     CLog::Log(LOGNOTICE, "SWITCH_GRP_PROC: begin parent={} children={}", GetParentID(),
               static_cast<int>(m_children.size()));
@@ -303,13 +326,14 @@ void CGUIControlGroup::Process(unsigned int currentTime, CDirtyRegionList &dirty
     const bool skipProcessByType = skipProcessScope && SwitchGroupCfgContainsInt("skip_process_type", control->GetControlType());
     if (skipProcessById || skipProcessByType)
     {
-      CLog::Log(LOGNOTICE,
-                "SWITCH_GRP_PROC: child process skipped parent={} idx={} id={} type={} reason={}",
-                GetParentID(),
-                childIndex,
-                control->GetID(),
-                control->GetControlType(),
-                skipProcessById ? "id" : "type");
+      if (traceProcessWindow)
+        CLog::Log(LOGNOTICE,
+                  "SWITCH_GRP_PROC: child process skipped parent={} idx={} id={} type={} reason={}",
+                  GetParentID(),
+                  childIndex,
+                  control->GetID(),
+                  control->GetControlType(),
+                  skipProcessById ? "id" : "type");
       ++childIndex;
       continue;
     }

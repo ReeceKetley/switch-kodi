@@ -23,43 +23,52 @@ static bool SwitchButtonCfgContainsInt(const char* key, int value)
   if (!key || !*key)
     return false;
 
-  const char* paths[] = {
-    "sdmc:/switch/kodi/trace.cfg",
-    "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
-    "sdmc:/switch/kodi-switch/trace.cfg",
-    "sdmc:/switch/trace.cfg",
-  };
-
-  for (const char* p : paths)
+  static bool s_loaded = false;
+  static bool s_traceEnabled = false;
+  static char s_cfg[8192] = {0};
+  if (!s_loaded)
   {
-    FILE* f = fopen(p, "rb");
-    if (!f)
-      continue;
+    s_loaded = true;
+    const char* paths[] = {
+      "sdmc:/switch/kodi/trace.cfg",
+      "sdmc:/switch/kodi-switch-slim-debug/trace.cfg",
+      "sdmc:/switch/kodi-switch/trace.cfg",
+      "sdmc:/switch/trace.cfg",
+    };
 
-    char buf[8192];
-    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    const size_t keyLen = std::strlen(key);
-    const char* cur = buf;
-    while (cur && *cur)
+    for (const char* p : paths)
     {
-      const char* hit = std::strstr(cur, key);
-      if (!hit)
-        break;
-      const char* val = hit + keyLen;
-      if (*val == '=')
-      {
-        ++val;
-        if (std::atoi(val) == value)
-          return true;
-      }
-      cur = hit + 1;
+      FILE* f = fopen(p, "rb");
+      if (!f)
+        continue;
+
+      size_t n = fread(s_cfg, 1, sizeof(s_cfg) - 1, f);
+      fclose(f);
+      s_cfg[n] = '\0';
+      s_traceEnabled = std::strstr(s_cfg, "trace=1") != nullptr;
+      break;
     }
-    return false;
   }
 
+  if (!s_cfg[0] || !s_traceEnabled)
+    return false;
+
+  const size_t keyLen = std::strlen(key);
+  const char* cur = s_cfg;
+  while (cur && *cur)
+  {
+    const char* hit = std::strstr(cur, key);
+    if (!hit)
+      break;
+    const char* val = hit + keyLen;
+    if (*val == '=')
+    {
+      ++val;
+      if (std::atoi(val) == value)
+        return true;
+    }
+    cur = hit + 1;
+  }
   return false;
 }
 #else
@@ -135,7 +144,9 @@ void CGUIButtonControl::Render()
 #if defined(TARGET_SWITCH) || defined(__SWITCH__)
   static uint64_t s_switchButtonRenderCalls = 0;
   ++s_switchButtonRenderCalls;
-  const bool traceRender = (GetID() == 5500) && (s_switchButtonRenderCalls <= 40);
+  const bool traceRender = (SwitchButtonCfgContainsInt("trace_button_render_all", 1) ||
+                            (GetID() > 0 && SwitchButtonCfgContainsInt("trace_button_render_id", GetID()))) &&
+                           (s_switchButtonRenderCalls <= 200);
   if (traceRender)
     CLog::Log(LOGNOTICE, "SWITCH_BTN_RENDER: begin id={} w={} h={}", GetID(), GetWidth(), m_height);
 #endif
@@ -177,7 +188,9 @@ void CGUIButtonControl::RenderText()
 #if defined(TARGET_SWITCH) || defined(__SWITCH__)
   static uint64_t s_switchButtonTextCalls = 0;
   ++s_switchButtonTextCalls;
-  const bool traceText = (GetID() == 5500) && (s_switchButtonTextCalls <= 80);
+  const bool traceText = (SwitchButtonCfgContainsInt("trace_button_text_all", 1) ||
+                          (GetID() > 0 && SwitchButtonCfgContainsInt("trace_button_text_id", GetID()))) &&
+                         (s_switchButtonTextCalls <= 400);
   if (traceText)
     CLog::Log(LOGNOTICE, "SWITCH_BTN_TEXT: begin id={}", GetID());
 #endif
@@ -332,8 +345,7 @@ void CGUIButtonControl::AllocResources()
 {
 #if defined(TARGET_SWITCH) || defined(__SWITCH__)
   const bool traceButtonAlloc = SwitchButtonCfgContainsInt("trace_button_alloc_all", 1) ||
-                                (GetID() > 0 && SwitchButtonCfgContainsInt("trace_button_alloc_id", GetID())) ||
-                                (GetID() == 5500);
+                                (GetID() > 0 && SwitchButtonCfgContainsInt("trace_button_alloc_id", GetID()));
   if (traceButtonAlloc)
   {
     CLog::Log(LOGNOTICE,

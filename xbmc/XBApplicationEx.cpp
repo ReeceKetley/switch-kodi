@@ -54,6 +54,15 @@ int CXBApplicationEx::Run(const CAppParamParser &params)
     KODI::MESSAGING::CApplicationMessenger::GetInstance().PostMsg(TMSG_PLAYLISTPLAYER_PLAY, -1);
   }
 
+  // Per-phase frame timing (Switch perf probe).
+  // Logs a breakdown every ~1 second so we can identify which phase is slow
+  // without spamming the log every frame.
+  unsigned int s_phaseProcess   = 0;
+  unsigned int s_phaseFrameMove = 0;
+  unsigned int s_phaseRender    = 0;
+  unsigned int s_frameCount     = 0;
+  unsigned int s_reportTimer    = XbmcThreads::SystemClockMillis();
+
   // Run xbmc
   CLog::Log(LOGNOTICE, "LOOPDBG: entering main while");
   while (!m_bStop)
@@ -76,19 +85,28 @@ int CXBApplicationEx::Run(const CAppParamParser &params)
     //-----------------------------------------
 
     lastFrameTime = XbmcThreads::SystemClockMillis();
+    unsigned int t0, t1, t2, t3;
+
+    t0 = XbmcThreads::SystemClockMillis();
     if (traceTick)
       CLog::Log(LOGNOTICE, "LOOPDBG: tick={} Process begin", static_cast<unsigned long long>(runLoopCount));
     Process();
+    t1 = XbmcThreads::SystemClockMillis();
     if (traceTick)
-      CLog::Log(LOGNOTICE, "LOOPDBG: tick={} Process done", static_cast<unsigned long long>(runLoopCount));
+      CLog::Log(LOGNOTICE, "LOOPDBG: tick={} Process done ({}ms)", static_cast<unsigned long long>(runLoopCount), t1 - t0);
 
     if (!m_bStop)
     {
       if (traceTick)
         CLog::Log(LOGNOTICE, "LOOPDBG: tick={} FrameMove begin", static_cast<unsigned long long>(runLoopCount));
       FrameMove(true, m_renderGUI);
+      t2 = XbmcThreads::SystemClockMillis();
       if (traceTick)
-        CLog::Log(LOGNOTICE, "LOOPDBG: tick={} FrameMove done", static_cast<unsigned long long>(runLoopCount));
+        CLog::Log(LOGNOTICE, "LOOPDBG: tick={} FrameMove done ({}ms)", static_cast<unsigned long long>(runLoopCount), t2 - t1);
+    }
+    else
+    {
+      t2 = t1;
     }
 
     if (m_renderGUI && !m_bStop)
@@ -96,14 +114,38 @@ int CXBApplicationEx::Run(const CAppParamParser &params)
       if (traceTick)
         CLog::Log(LOGNOTICE, "LOOPDBG: tick={} Render begin", static_cast<unsigned long long>(runLoopCount));
       Render();
+      t3 = XbmcThreads::SystemClockMillis();
       if (traceTick)
-        CLog::Log(LOGNOTICE, "LOOPDBG: tick={} Render done", static_cast<unsigned long long>(runLoopCount));
+        CLog::Log(LOGNOTICE, "LOOPDBG: tick={} Render done ({}ms)", static_cast<unsigned long long>(runLoopCount), t3 - t2);
     }
-    else if (!m_renderGUI)
+    else
     {
-      frameTime = XbmcThreads::SystemClockMillis() - lastFrameTime;
-      if(frameTime < noRenderFrameTime)
-        Sleep(noRenderFrameTime - frameTime);
+      t3 = t2;
+      if (!m_renderGUI)
+      {
+        frameTime = t3 - lastFrameTime;
+        if(frameTime < noRenderFrameTime)
+          Sleep(noRenderFrameTime - frameTime);
+      }
+    }
+
+    // Accumulate phase times and report once per second.
+    s_phaseProcess   += (t1 - t0);
+    s_phaseFrameMove += (t2 - t1);
+    s_phaseRender    += (t3 - t2);
+    ++s_frameCount;
+
+    unsigned int now = XbmcThreads::SystemClockMillis();
+    if (now - s_reportTimer >= 1000)
+    {
+      unsigned int totalMs = now - s_reportTimer;
+      CLog::Log(LOGNOTICE,
+                "SWITCH_PERF: frames={} total={}ms  Process={}ms  FrameMove={}ms  Render={}ms  fps~={:.1f}",
+                s_frameCount, totalMs,
+                s_phaseProcess, s_phaseFrameMove, s_phaseRender,
+                s_frameCount > 0 ? (s_frameCount * 1000.0f / totalMs) : 0.0f);
+      s_phaseProcess = s_phaseFrameMove = s_phaseRender = s_frameCount = 0;
+      s_reportTimer = now;
     }
 
   }
