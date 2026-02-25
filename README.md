@@ -13,6 +13,9 @@ For full technical handoff and debug flow:
 - `README_SWITCH_SESSION.md`
 - `SWITCH_SPIKE_NOTES.md`
 
+### Running on real hardward (Atmosphere 18.0)
+![Kodi running in Atmosphere](docs/resources/20260225_225528.jpg)
+
 ---
 ## Upstream Kodi README (Reference)
 
